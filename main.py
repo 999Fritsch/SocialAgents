@@ -4,7 +4,7 @@ import json
 
 from langchain_ollama import ChatOllama
 from langchain_core.tools import tool
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage, ChatMessage
 from typing_extensions import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -33,7 +33,7 @@ def validate_user(user_id: int, addresses: List[str]) -> bool:
 
 @tool()
 def post_tweet(content: str) -> Dict[str, str]:
-    """Post a simulated tweet by writing content and time to a JSON file.
+    """Post a tweet to tell the world about what you are feeling/thinking right now.
 
     Args:
         content (str): The content of the tweet.
@@ -55,8 +55,32 @@ def post_tweet(content: str) -> Dict[str, str]:
 
     return tweet
 
-tools = [post_tweet]  # Update the tools list to include the correct function
-llm = ChatOllama(model="nemotron-mini:4b-instruct-q4_K_M")
+@tool()
+def write_journal_entry(entry: str) -> Dict[str, str]:
+    """Write a journal entry about what happened to you to reflect about it.
+
+    Args:
+        entry (str): The content of the journal entry.
+    """
+    journal_entry = {
+        "entry": entry,
+        "time": datetime.now().isoformat()
+    }
+
+    try:
+        with open("journal.json", "r+") as file:
+            data = json.load(file)
+            data.append(journal_entry)
+            file.seek(0)
+            json.dump(data, file, indent=4)
+    except FileNotFoundError:
+        with open("journal.json", "w") as file:
+            json.dump([journal_entry], file, indent=4)
+
+    return journal_entry
+
+tools = [post_tweet, write_journal_entry]  # Update the tools list to include the correct function
+llm = ChatOllama(model="nemotron-mini:4b-instruct-q4_K_M", temperature=0.9)
 llm_with_tools = llm.bind_tools(tools)
 
 
@@ -82,12 +106,12 @@ graph = graph_builder.compile(checkpointer=memory)
 
 config = {"configurable": {"thread_id": "1"}}
 
-user_input = "You just watched a good episode of your favourite anime. You decide to tweet about it."
+user_input = "Your crush Mikhaila just broke your heart."
 
 # The config is the **second positional argument** to stream() or invoke()!
 events = graph.stream(
-    {"messages": [{"role": "system", "content": "You are roleplaying as 19 year old Tyler, a angsty weeb with a passion in cooking."},
-        {"role": "user", "content": user_input}]},
+    {"messages": [SystemMessage("You are roleplaying as 19 year old Tyler, a angsty weeb with a passion in cooking."),
+                  {"role": "user", "content": user_input}]},
     config,
     stream_mode="values",
 )
